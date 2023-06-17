@@ -1,0 +1,727 @@
+---
+title: "Goodreads – analiza popularnosti knjiga"
+subtitle: "Transupstancija"
+author: "Mario Hladek, Mihael Kožul, Matija Sever, Mirta Vučinić"
+date: "2022-12-16"
+# output: html_document
+output: pdf_document
+---
+
+# Motivacija i opis projekta
+Goodreads, kao društvena mreža za obožavatelje čitanja, svojim korisnicima omogućuje pretraživanje i ocjenjivanje velikog kataloga knjiga. Zahvaljujući tome, nastala je iscrpna Goodreads baza podataka koja sadrži atribute poput naslova knjige, formata knjige, imena autora, ocjene i komentara korisnika i dr. Skup podataka koji je korišten unutar projekta odgovara knjigama na popisu Goodreads Best Book Ever te sadrži čak 52,478 knjige.
+
+# Cilj projekta
+Cilj projekta pod nazivom "Goodreads – analiza popularnosti knjiga" jest na temelju dostupnog skupa podataka odgovoriti na naredna pitanja:
+
+• Postoje li razlike u ocjenama knjiga s obzirom na žanr
+
+• Jesu li knjige s manje stranica jeftinije
+
+• Možete li odrediti popularnost knjige na temelju dostupnih varijabli
+
+• Postoje li razlike u popularnosti knjiga s obzirom na njihovu starost
+
+• Možete li na temelju dostupnih varijabli odrediti je li knjiga bila nagrađivana,
+
+te pritom saznati i naučiti nešto novo.
+
+
+# Skup podataka
+
+```{r}
+#Učitavanje podataka
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(MLmetrics)
+data <- read.csv("Goodreads-dataset.csv", sep = ";", header = TRUE)
+```
+
+
+```{r}
+#Pregled podataka
+head(data)
+```
+
+
+```{r}
+summary(data)
+```
+
+## Opis dataset-a:
+
+"title": Naslov knjige.
+
+"series": Serija kojoj knjiga pripada, ako postoji.
+
+"author": Autor ili autori knjige.
+
+"rating": Prosječna ocjena koju je knjiga dobila, određena prema recenzijama ili čitateljima.
+
+"language": Jezik na kojem je knjiga napisana.
+
+"genres": Popis žanrova u kojima se knjiga nalazi.
+
+"bookForm": Format knjige, kao što su tvrdi uvez, meki uvez ili elektronska knjiga.
+
+"pages": Broj stranica u knjizi.
+
+"publisher": Izdavač knjige.
+
+"awards": Nagrade koje je knjiga dobila.
+
+"numRatings": Broj ocjena koje je knjiga dobila.
+
+"ratingByStars": Razdioba ocjena koje je knjiga dobila, razvrstana po broju zvjezdica (npr. ocjene s 5 zvjezdica, ocjene s 4 zvjezdice itd.).
+
+"likedPercent": Postotak čitatelja koji su voljeli knjigu.
+
+"price": Cijena knjige.
+
+"genre1": Prvi žanr knjige.
+
+"genre2": Drugi žanr knjige.
+
+
+```{r}
+# Dimenzije dataseta:
+dim(data)  # broj redaka, broj stupaca (broj primjera, broj varijabli) 
+```
+
+```{r}
+# Tip podataka unutar dataseta
+str(data)
+```
+
+## Mjere centralne tendencije
+
+Mjere centralne tendencije (ili središnje mjere) opisuju skup podataka jednom vrijednošću oko koje se podatci grupiraju. Najčešće korištene mjere centralne tendencije su: aritmetička sredina, medijan, mod i podrezana aritmetička sredina.
+
+
+```{r}
+sprintf("Aritmetička sredina (mean)= %f",mean(data$rating))
+
+sprintf("Podrezana aritmetička sredina s uklanjanjem po 20%% najmanjih i najvećih podataka = %f",mean(data$rating, trim=0.2) )
+
+sprintf("Medijan - robusna mjera centralne tendencije(točno 50%% podataka je manje i 50%% podataka veće od te vrijednosti) iznosi %f", median(data$rating))
+
+
+print("1., 2. i 3. kvartil")
+quantile(data$rating, probs = c(0.25,0.5,0.75))
+
+```
+
+
+# 1.Postoje li razlike u ocjenama knjiga s obzirom na žanr?
+
+Imamo jedan numerički stupac rating odnosno ocijenu knjige i dva kategorička stupca genre1 i genre2. Kada imamo kombinaciju numeričkih i kategoričkih varijabli najbolje je koristiti ANOVA-u.
+
+ANOVA je statistički test za procjenu kako se kvantitativna zavisna varijabla mijenja prema razinama jedne ili više kategoričkih nezavisnih varijabli.Jedan od glavnih ciljeva analize varijance je ustanoviti jesu li upravo te razlike između grupa samo posljedica slučajnosti ili je statistički značajna.
+
+
+```{r}
+
+#Spajanje genre1 genre2 i ratings u dataframe
+data_subset <- cbind(data$genre1, data$genre2)
+data_subset <- cbind(data_subset, data$rating)
+
+colnames(data_subset) <- c("genre1", "genre2", "rating")
+
+data_subset <- as.data.frame(data_subset)
+
+#Aritmetička sredina ratings-a zavisna o genre1 i genre2
+mean_ratings <- data_subset %>%
+  group_by(genre1, genre2) %>%
+  summarise(mean_rating = mean(as.numeric(rating))) %>%
+  ungroup() %>%
+  arrange(desc(mean_rating))
+
+mean_ratings
+```
+
+```{r fig.width=15, fig.height=10}
+#dvofaktorska anova - graficka provjera, provjera normalnosti i homogenosti varijanci
+
+require(nortest)
+lillie.test(data$rating)
+
+qqnorm(data$rating, pch = 1, frame = FALSE)
+qqline(data$rating, col = "steelblue", lwd = 2)
+
+# Graficki prikaz podataka
+boxplot(data$rating~data$genre1) 
+boxplot(data$rating ~ data$genre2) 
+boxplot(data$rating ~ interaction(data$genre1,data$genre2))
+
+#Levene-ov test za jednakost varijanci između pojedinih grupa
+require(car)
+leveneTest(data$rating~interaction(data$genre1,data$genre2),data=data)
+
+```
+Iako je dosta nepregledno, jer imamo puno kategorija žanrova, grafički prikaz sugerira da postoji jasna razlika između žanrova.
+
+Vidimo kako podaci nisu normalno distrubuirano zbog male p vrijednosti i također zbog istog razloga vidimo da ni varijance nisu homogene. Kako nisu zadovoljeni uvjeti za testiranje podataka ANOVA-om, koristit ćemo Kruskal- Wallis test.
+
+```{r}
+#ANOVA
+#a = aov(rating ~ genre1 * genre2, data = data)
+#summary(a)
+```
+
+
+Kruskal-Wallisov test po rangovima je neparametarska metoda za testiranje potječu li uzorci iz istih distribucija Koristi se za usporedbu dva ili više neovisnih uzoraka jednake ili različite veličine uzorka. Proširuje Mann–Whitneyjev U test koji se koristi za usporedbu samo dvije skupine. 
+
+U ovom zadataku uspoređujemo kako genre1 i genre2 utječu na rating knjige.
+
+```{r}
+#Kruskal- Wallis test
+kruskal.test(rating~interaction(genre1,genre2),data=data)
+genre1_factor <- factor(data$genre1)
+genre1_numeric <- as.numeric(genre1_factor)
+genre1_cor <- cor.test(data$rating, genre1_numeric)
+genre1_cor
+
+genre2_factor <- factor(data$genre2)
+genre2_numeric <- as.numeric(genre2_factor)
+```
+
+Analizom ispisanih podataka vidimo kako p-value  iznosi <2.2e-16.Kako je p vrijednost izrazito mala možemo zaključiti da kategorije, genre1 i genre2 imaju značajan utjecaj na numeričku varijablu, odnosno možemo zaključiti da žanr knjige utječe na ocijenu.
+
+```{r}
+ggplot(mean_ratings, aes(x = genre1, y = genre2, size = mean_rating)) +
+  geom_point()
+```
+
+
+```{r fig.width=15, fig.height=10}
+interaction.plot(x.factor = data$genre1,
+                 trace.factor =data$genre2,
+                 response = data$rating,
+                 fun = mean,
+                 type = "b",
+                 ylab = "Mean",
+                 xlab = "Genre1",
+                 col = c("red", "lightblue","seagreen3","salmon","lightcoral","yellow","orange","black","grey","chartreuse4","violet","hotpink","chocolate","darkmagenta","orangered4","navy","yellow3"),
+                 lty = 1,
+                 lwd=2.5,
+                 trace.label = "Genre2",
+                 xpd=FALSE,
+                 leg.bty = "o",
+                  )
+```
+Zbog velike količine kategorija u genre2 stupcu introduction.plot se na nekim mjestima teško interpretira. Zbog toga imamo i ggplot iznad gdje za neke podatke nečitljive iz introduction.plota možemo viditi njihove vrijednosti.
+
+#########################################################################################################################
+
+
+# 2.Jesu li knjige s manje stranica jeftinije?
+
+```{r}
+# Odvajanje 'pages' i 'price' u zaseban skup, pretvaranje vrijednosti u int i double.
+
+data_drugi <- cbind(data$pages, data$price)
+colnames(data_drugi) <- c("pages", "price")
+
+data_drugi <- as.data.frame(data_drugi)
+
+data_drugi$pages = as.integer(data_drugi$pages)
+data_drugi$price = as.double(data_drugi$price)
+
+data_drugi_clean <- na.omit(data_drugi)
+p11 = cor(data_drugi_clean$price, data_drugi_clean$pages)
+cat("\n\nJako nizak koeficijent koeficijent korelacije dviju zadanih znacajki:", p11)
+
+```
+
+```{r}
+# Prikaz podataka i njihovih osnovnih informacija (jako puno nedostajucih vrijednosti)
+
+summary(data_drugi)
+
+head(data_drugi)
+
+data_drugi_prazni <- data_drugi
+
+```
+
+Prikazi boxplot-a i histograma za značajku 'pages' i 'price'.
+
+```{r}
+
+summary(data_drugi$pages)
+boxplot(
+  data_drugi$pages, 
+  main = "Boxplot za znacajku 'pages'",
+  xlab = "Broj stranica",
+  horizontal = TRUE
+)
+hist(
+  data_drugi$pages,
+  main = "Histogram za znacajku 'pages'",
+  xlab = "Broj stranica",
+  )
+
+```
+```{r}
+summary(data_drugi$price)
+boxplot(
+  data_drugi$price, 
+  main = "Boxplot za znacajku 'price'",
+  xlab = "Cijena",
+  horizontal = TRUE
+)
+hist(
+  data_drugi$price,
+  main = "Histogram za znacajku 'price'",
+  xlab = "Cijena",
+  )
+```
+Vidimo da grafovi ne izgledaju baš dobro, jer su jako ukošeni u jednu stranu. Nedostajuće vrijednosti možemo postaviti da su jednake medijanu. Medutim prvo ćemo provesti pokus izgleda grafova ako izbacimo samo 1% podataka sa gornje i donje strane.
+
+```{r}
+
+missing_values <- which(is.na(data_drugi$pages))
+extrem <- data_drugi$pages[-missing_values]
+missing_values <- which(is.na(data_drugi$price))
+extrem2 <- data_drugi$price[-missing_values]
+
+extrem <- sort(extrem)
+extrem2 <- sort(extrem2)
+extrem <- extrem[(length(extrem) * 0.01) : (length(extrem)* 0.99)]
+extrem2 <- extrem2[(length(extrem2) * 0.01) : (length(extrem2)* 0.99)]
+
+length(data_drugi$pages) 
+length(extrem)
+summary(extrem)
+length(data_drugi$price) 
+length(extrem2)
+summary(extrem2)
+
+boxplot(extrem,
+  main = "Boxplot za znacajku 'pages'",
+  xlab = "Broj stranica",horizontal = TRUE)
+d <- density(extrem)
+plot(d,xlab = "Broj stranica",
+  main = "Distribucija za znacajku 'pages'")
+
+boxplot(extrem2,
+  main = "Boxplot za znacajku 'price'",
+  xlab = "Cijena ($)",
+  horizontal = TRUE)
+d <- density(extrem2)
+plot(d, xlab = "Cijena ($)",
+  main = "Distribucija za znacajku 'price'")
+
+
+```
+
+Iako su sada grafovi puno pregledniji, medijan za 'price' i 'pages' ostao je gotovo isti (čak se ni srednja vrijednost nije puno promijenila). Odlučili smo se da ćemo nedostajuće vrijednosti postaviti na medijan.
+
+```{r}
+
+data_drugi_prosireni <- data_drugi
+
+x_median <- median(data_drugi$pages[!is.na(data_drugi$pages)])
+data_drugi_prosireni$pages[is.na(data_drugi$pages)] <- x_median
+
+x_median <- median(data_drugi$price[!is.na(data_drugi$price)])
+data_drugi_prosireni$price[is.na(data_drugi$price)] <- x_median
+
+summary(data_drugi_prosireni$pages)
+summary(data_drugi_prosireni$price)
+```
+Možemo započeti test. --> Jesu li knjige s manje stranica jeftinije? <--
+
+Ovdje možemo iskoristiti Hi-kvadrat test koji ispituje postoji li zavisnost između broja stranica i cijene, time odgovoriti na zadano pitanje.
+
+Za početak trebamo napraviti kontigencijsku tablicu. Značajke cemo grupirati u 3×3 razreda. 
+Malo stranica, srednje, puno stranica. Mala cijena, srednja, velika cijena.
+
+```{r}
+
+subset_data <- subset(data_drugi_prosireni, pages<=90 & price<=20)
+nrow(subset_data)
+
+data_drugi_prosireni$pages_cat <- cut(data_drugi_prosireni$pages, breaks = c(-Inf, 90, 199, Inf), labels = c("less_pages", "semi_pages", "many_pages"))
+data_drugi_prosireni$price_cat <- cut(data_drugi_prosireni$price, breaks = c(-Inf, 20, 40, Inf), labels = c("low_price", "semi_price", "high_price"))
+
+table <- table(data_drugi_prosireni$price_cat, data_drugi_prosireni$pages_cat)
+
+added_margins_table = addmargins(table)
+added_margins_table
+#chisq.test(table)
+
+```
+Nakon sto grupiramo razrede, za svaki provjeravamo je li očekivana frekvencija >= 5. To je pretpostavka hi-kvadrat testa.
+
+```{r}
+
+for (col_names in colnames(added_margins_table)){
+  for (row_names in rownames(added_margins_table)){
+    if (!(row_names == 'Sum' | col_names == 'Sum') ){
+      cat('Očekivane frekvencije :',col_names,'-',row_names,':',(added_margins_table[row_names,'Sum'] * added_margins_table['Sum',col_names]) / added_margins_table['Sum','Sum'],'\n')
+    }
+  }
+}
+```
+Vidimo da frekvencije zadovoljavaju uvjet, možemo nastaviti s testom.
+
+Testom ispitujemo postoji li veza između cijene i stranica knjige. H0 pretpostavka govori da su ove varijable nezavisne. Ukoliko p-vrijednost ispadne manja od 0.05 odbacujemo H0 pretpostavku.
+
+```{r}
+
+chisq.test(added_margins_table, correct=F)
+```
+p-vrijednost rezultira s 0.087 sto znači da su zadane varijable nezavisne jedna od druge. Time smo odgovorili na početno pitanje "Jesu li knjige s manje stranica jeftinije?" --> varijable su nezavisne, ako knjiga ima manje stranica ne mora značiti da ce biti jeftinija.
+
+#############################################################################################################
+
+# 3. Možete li odrediti popularnost knjige (po vašoj definiciji, npr. broj glasača, prosječna ocjena...) na temelju dostupnih varijabli?
+
+U svrhu pronalaženja rješenja na prethodno pitanje izabrana je logistička regresija.
+
+## Logistička regresija
+
+```{r}
+library(zoo)
+data_2 <- data
+data_2 <- select(data_2, -genres)
+# zamjena praznih vrijednosti interpolacijom
+data_2 <- data_2 %>%
+        mutate(likedPercent = round(na.approx(likedPercent)))
+data_2["price"][data_2["price"] == ''] <- NA
+data_2 <- data_2 %>%
+        mutate(price = na.approx(price))
+data_2["pages"][data_2["pages"] == ''] <- NA
+data_2 <- data_2 %>%
+        mutate(pages = na.approx(pages))
+
+# Vrsta podataka
+cat("\n\n")
+str(data_2)
+```
+
+```{r}
+# Histogrami potencijalnih atributa popularnosti
+hist(data_2$numRatings)
+hist(data_2$rating)
+hist(data_2$likedPercent)
+max(data_2$numRatings)
+summary(data_2$numRatings)
+```
+
+```{r}
+# Popularne su one knjige koje imaju vise od 9380 ocjena (top 25%)
+data_2$popularity <- ifelse(data_2$numRatings > 9380, 1, 0)
+str(data_2)
+```
+
+
+```{r}
+# Priprema podataka
+data_2$price <- as.numeric(data_2$price)
+data_2$pages <- as.numeric(data_2$pages)
+data_2$author_enc <- as.numeric(factor(data_2$author))
+data_2$title_enc <- as.numeric(factor(data_2$title))
+data_2$series_enc <- as.numeric(factor(data_2$series))
+data_2$language_enc <- as.numeric(factor(data_2$language))
+data_2$bookFormat_enc <- as.numeric(factor(data_2$bookFormat))
+data_2$publisher_enc <- as.numeric(factor(data_2$publisher))
+data_2$genre1_enc <- as.numeric(factor(data_2$genre1))
+data_2$genre2_enc <- as.numeric(factor(data_2$genre2))
+data_2$awards_enc <- as.numeric(factor(data_2$awards))
+data_2$ratingByStars_enc <- as.numeric(factor(data_2$ratingsByStars))
+data_2$popularity <- factor(data_2$popularity, levels = c(0,1), labels = c(FALSE,TRUE))
+summary(data_2)
+```
+
+Model logističke regresije prima sve atribute skupa podataka s time da su kategoričke varijable enkodirane kako bi model mogao konvergirati. Pomoću Rsq koristi se kako bi se vidjelo koliko je procijenjeni model blizu, odnosno daleko od null modela, dakle Rsq prikazuje koliko je naučeni model dobar.
+
+```{r}
+# sample_data <- data_2 %>% sample_frac(0.8)
+
+# Model logisticke regresije
+logreg.mdl = glm(popularity ~ rating + author_enc + title_enc + series_enc + language_enc + bookFormat_enc + genre1_enc + genre2_enc + awards_enc + ratingByStars_enc + pages + price + likedPercent, data = data_2, family = binomial())
+summary(logreg.mdl)
+
+# Pseudo-R2
+Rsq = 1 - logreg.mdl$deviance/logreg.mdl$null.deviance
+Rsq
+```
+
+
+Matrica zabune jedan je od pokazatelja kvalitete modela te je baza za daljnji izračun metrika performansi modela. Ona je zapravo kontingencijska matriac oznaka iz podataka i modela.
+
+```{r}
+# Matrica zabune
+yHat <- logreg.mdl$fitted.values >= 0.5
+tab <- table(data_2$popularity, yHat)
+tab
+```
+
+
+```{r}
+# Metrike performansi - tocnost, preciznost, odziv, specificnost
+accuracy = sum(diag(tab)) / sum(tab)
+precision = tab[2,2] / sum(tab[,2])
+recall = tab[2,2] / sum(tab[2,])
+specificity = tab[1,1] / sum(tab[,1])
+accuracy
+precision
+recall
+specificity
+```
+
+```{r}
+# Novi atribut
+data_2$RL <- data_2$rating * data_2$likedPercent
+```
+
+
+```{r}
+# Model 2
+logreg.mdl.2 = glm(popularity ~ rating + author_enc + title_enc + series_enc + language_enc + bookFormat_enc + genre1_enc + genre2_enc + awards_enc + pages + price + likedPercent + RL, data = data_2, family = binomial())
+summary(logreg.mdl.2)
+
+# Pseudo-R2
+Rsq.2 = 1 - logreg.mdl$deviance/logreg.mdl$null.deviance
+Rsq.2
+```
+
+Uz pomoć testa omjera izglednosti u nastavku se uspoređuju rezultati dvaju modela - originalnog te modela s dodatnim atributom nastalim kao kombinacija dva postojeća atributa.
+
+```{r}
+# Test omjera izglednosti
+anova(logreg.mdl, logreg.mdl.2, test = "LRT")
+```
+
+Iz modela 3 izbačena je enkodirana varijabla naslova knjige s obzirom da je ona nesignifikantni regresor.
+
+```{r}
+# Model 3
+logreg.mdl.3 = glm(popularity ~ rating + author_enc + series_enc + language_enc + bookFormat_enc + genre1_enc + genre2_enc + awards_enc + pages + price + likedPercent + RL, data = data_2, family = binomial())
+summary(logreg.mdl.3)
+
+# Pseudo-R2
+Rsq.3 = 1 - logreg.mdl$deviance/logreg.mdl$null.deviance
+Rsq.3
+```
+
+```{r}
+# Test omjera izglednosti
+anova(logreg.mdl, logreg.mdl.3, test = "LRT")
+```
+
+```{r}
+# Matrica zabune
+yHat <- logreg.mdl.3$fitted.values >= 0.5
+tab <- table(data_2$popularity, yHat)
+tab
+```
+
+```{r}
+# Metrike performansi - tocnost, preciznost, odziv, specificnost
+accuracy = sum(diag(tab)) / sum(tab)
+precision = tab[2,2] / sum(tab[,2])
+recall = tab[2,2] / sum(tab[2,])
+specificity = tab[1,1] / sum(tab[,1])
+accuracy
+precision
+recall
+specificity
+
+
+# Originalni model
+# [1] 0.7682648
+# [1] 0.6023916
+# [1] 0.2150152
+# [1] 0.7845172
+
+# Model 3 bez RL
+# [1] 0.7683029
+# [1] 0.602649
+# [1] 0.2150152
+# [1] 0.7845262
+```
+Najboljim se pokazao treći model iako su generalno razlike između modela minimalne.
+
+```{r}
+# Graf predvidanja
+predicted.data <- data.frame(
+  probability.of.popularity=logreg.mdl.3$fitted.values,
+  pop=data_2$popularity)
+ 
+predicted.data <- predicted.data[
+  order(predicted.data$probability.of.popularity, decreasing=FALSE),]
+predicted.data$rank <- 1:nrow(predicted.data)
+
+ggplot(data=predicted.data, aes(x=rank, y=probability.of.popularity)) +
+  geom_point(aes(color=pop), alpha=1, shape=4, stroke=2) +
+  xlab("Indeks") +
+  ylab("Predvidena vjerojatnost za popularnost knjige")
+```
+Dobiveni graf prikazuje uspješnost predviđanja modela na način da bi sve popularne knjige trebale biti iznad granice od 0.5 jer 0 predstavlja nepopularnu knjigu, a 1 popularnu. Vidljivo je kako je većina vrijednosti stvarno iznad te granice te da su dobro klasificirane. Iako postoje greške i model ne ostvaruje odlične rezultate (koji bi bili mogući uz dodatna poboljšanja), može se donijeti zaključak kako je moguće odrediti popularnost knjige na temelju varijabli unutar zadanog skupa podataka. Točnost konačnog modela iznosi 76.86%, preciznost 60.31%, odziv 21.77%, a specifičnost 78.5%.
+
+#####################################################################################################################################################
+
+# 4.Možete li na temelju dostupnih varijabli odrediti je li knjiga bila nagrađivana?
+
+
+Pretvorba podataka za učenje modela:
+```{r}
+y <- data$awards
+y <- ifelse(y == "[]", 0, 1)
+
+X <- data %>% select(-language,-publisher, -bookFormat,-author, -series, -X, -title, -genres, -ratingsByStars, -awards)
+
+X$genre1 <- factor(X$genre1)
+X$genre2 <- factor(X$genre2)
+
+
+X$pages <- as.numeric(as.character(X$pages))
+X$pages[!is.numeric(X$pages)] <- NA
+average_pages <- mean(X$pages, na.rm = TRUE)
+X$pages[is.na(X$pages)] <- average_pages
+
+X$price <- as.numeric(as.character(X$price))
+X$price[!is.numeric(X$price)] <- NA
+average_price <- mean(X$price, na.rm = TRUE)
+X$price[is.na(X$price)] <- average_price
+
+average_likedPercent <- mean(X$likedPercent, na.rm = TRUE)
+X$likedPercent[is.na(X$likedPercent)] <- average_likedPercent
+```
+
+Učenje modela na svim podacima:
+
+```{r}
+logreg.mdl.3 = glm(y ~ ., data = X, family = binomial())
+
+summary(logreg.mdl.3)
+
+
+yHat <- logreg.mdl.3$fitted.values > 0.5
+tab <- table(y, yHat)
+
+tab
+
+
+accuracy = sum(diag(tab)) / sum(tab)
+precision = tab[2,2] / sum(tab[,2])
+recall = tab[2,2] / sum(tab[2,])
+specificity = tab[1,1] / sum(tab[,1])
+
+print('accuracy:')
+accuracy
+print('precision')
+precision
+print('recall')
+recall
+print('specificity')
+specificity
+
+```
+
+Učenjem modela logističkom regresijom dobivamo dobar accuracy, ali loš recall što ukazuje na ne balans između klasa.
+
+
+Upsampaling data:
+```{r}
+data_prediction <- cbind(X, y)
+data <- cbind(X, y)
+
+majority <- max(table(data$y))
+balanced_data <- data %>% group_by(y) %>% sample_n(majority, replace = TRUE)
+```
+
+
+Učenje modela na ujednačenom skupu podataka:
+```{r}
+y <- balanced_data$y
+X <- balanced_data %>% select(-y)
+
+logreg.mdl.3 = glm(y ~ ., data = X, family = binomial())
+
+summary(logreg.mdl.3)
+
+
+yHat <- logreg.mdl.3$fitted.values > 0.5
+tab <- table(y, yHat)
+
+tab
+
+
+accuracy = sum(diag(tab)) / sum(tab)
+precision = tab[2,2] / sum(tab[,2])
+recall = tab[2,2] / sum(tab[2,])
+specificity = tab[1,1] / sum(tab[,1])
+
+print('accuracy')
+accuracy
+print('precision')
+precision
+print('recall')
+recall
+print('specificity')
+specificity
+```
+
+Nakon popravljenog balansa klasa u podacima accuracy se smanjila ali je sada recall puno bolji.
+
+Priprema podataka:
+```{r}
+balanced_data$z <- abs(scale(balanced_data$pages))
+data_clean <- balanced_data %>% filter(z < 3)
+
+balanced_data$z <- abs(scale(balanced_data$numRatings))
+data_clean <- balanced_data %>% filter(z < 3)
+
+balanced_data$z <- abs(scale(balanced_data$price))
+data_clean <- balanced_data %>% filter(z < 3)
+
+balanced_data$z <- abs(scale(balanced_data$rating))
+data_clean <- balanced_data %>% filter(z < 3)
+
+balanced_data$z <- abs(scale(balanced_data$likedPercent))
+data_clean <- balanced_data %>% filter(z < 3)
+
+data_clean <- data_clean %>% select(-z)
+```
+
+Učenje modela na ujednačenom skupu podataka s izbacenim strsecim vrijednostima:
+```{r}
+y <- data_clean$y
+X <- data_clean %>% select(-y)
+
+
+logreg.mdl.3 = glm(y ~ ., data = X, family = binomial())
+
+summary(logreg.mdl.3)
+
+
+yHat <- logreg.mdl.3$fitted.values > 0.5
+tab <- table(y, yHat)
+
+tab
+
+
+accuracy = sum(diag(tab)) / sum(tab)
+precision = tab[2,2] / sum(tab[,2])
+recall = tab[2,2] / sum(tab[2,])
+specificity = tab[1,1] / sum(tab[,1])
+
+print('accuracy')
+accuracy
+print('precision')
+precision
+print('recall')
+recall
+print('specificity')
+specificity
+```
+
+Kada smo maknuli stršeće vrijednosti model je malo izgubio na accuracy-u, ali model sada bolje generalizira.
+
+Zaključno, da, možemo s nekom malom pristranošću odrediti je li je knjiga bila nagrađivana, ali podatke moramo prije balansirati.
+Balansiranje skupa podataka je važno jer algoritmi učenja često daju prednost većem broju primjera jedne klase u odnosu na druge. To može dovesti do "preučenosti" modela na većini primjera jedne klase i lošijeg generaliziranja na primjere druge klase. Balansiranjem skupa podataka, osiguravamo da algoritmi učenja imaju sličan broj primjera svake klase, što povećava njihovu sposobnost generaliziranja na nove primjere.
+
